@@ -55,9 +55,14 @@ export class Store {
         business: { ...base.business, ...(raw.business || {}) },
         personal: { ...base.personal, ...(raw.personal || {}) }
       }
-      // Guarantee an "All Groups" default list survives.
       for (const k of ['business', 'personal'] as AccountId[]) {
+        // Guarantee an "All Groups" default list survives.
         if (!merged[k].lists?.length) merged[k].lists = base[k].lists
+        // A transient "connecting" status can't survive a restart — normalize it
+        // so the UI never boots into a stuck connecting state.
+        if (merged[k].status === 'connecting') {
+          merged[k].status = merged[k].groups.length ? 'needs_relink' : 'not_linked'
+        }
       }
       return merged
     } catch (err) {

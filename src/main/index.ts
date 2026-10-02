@@ -23,7 +23,7 @@ function send(channel: string, payload: unknown): void {
     mainWindow.webContents.send(channel, payload)
   }
 }
-
+// new changes
 const wa = new WhatsAppManager({
   qr: (account, dataUrl) => send(IPC.onQr, { account, dataUrl }),
   status: (account, status, linkedWhen) => {

@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { join } from 'path'
-import { existsSync, readdirSync } from 'fs'
+import { existsSync, readdirSync, rmSync } from 'fs'
 import { homedir } from 'os'
 import QRCode from 'qrcode'
 import { Client, LocalAuth, MessageMedia } from 'whatsapp-web.js'
@@ -17,6 +17,9 @@ type WAClient = Client
 // Human-like throttle between sends (ms). Larger jitter => lower flag risk (PRD Risks).
 const MIN_DELAY = 3000
 const MAX_DELAY = 7000
+
+// Max time to wait for a QR / ready after starting a session before giving up.
+const START_TIMEOUT = 90000
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 const jitter = (): number => MIN_DELAY + Math.floor(Math.random() * (MAX_DELAY - MIN_DELAY))
@@ -57,7 +60,7 @@ function resolveChromePath(): string | undefined {
     }
   }
 
-  // 2) puppeteer-managed full Chrome for Testing
+  // 2) puppeteer-managed full Chrome for Testing (isolated profile, ideal)
   scan(join(cache, 'chrome'), [
     join('chrome-mac-arm64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing'),
     join('chrome-mac-x64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing'),
@@ -65,7 +68,16 @@ function resolveChromePath(): string | undefined {
     join('chrome-win64', 'chrome.exe')
   ])
 
-  // 3) system browsers
+  // 3) chrome-headless-shell — isolated from the user's everyday Chrome and
+  // purpose-built for automation. Preferred over system Chrome, which can hang
+  // when the user already has Chrome open (we always run headless anyway).
+  scan(join(cache, 'chrome-headless-shell'), [
+    join('chrome-headless-shell-mac-arm64', 'chrome-headless-shell'),
+    join('chrome-headless-shell-mac-x64', 'chrome-headless-shell'),
+    join('chrome-headless-shell-linux64', 'chrome-headless-shell')
+  ])
+
+  // 4) system browsers (last resort)
   candidates.push(
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     '/Applications/Chromium.app/Contents/MacOS/Chromium',
@@ -76,13 +88,6 @@ function resolveChromePath(): string | undefined {
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
     'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
   )
-
-  // 4) chrome-headless-shell (headless-only)
-  scan(join(cache, 'chrome-headless-shell'), [
-    join('chrome-headless-shell-mac-arm64', 'chrome-headless-shell'),
-    join('chrome-headless-shell-mac-x64', 'chrome-headless-shell'),
-    join('chrome-headless-shell-linux64', 'chrome-headless-shell')
-  ])
 
   return firstExisting(candidates)
 }
@@ -100,6 +105,7 @@ export interface WARawGroup {
 /** Manages one whatsapp-web.js Client per account, each with its own LocalAuth session. */
 export class WhatsAppManager {
   private clients = new Map<AccountId, WAClient>()
+  private startTimers = new Map<AccountId, ReturnType<typeof setTimeout>>()
   private sessionDir: string
 
   constructor(private emit: WAEmitter) {
@@ -108,6 +114,31 @@ export class WhatsAppManager {
 
   private clientId(account: AccountId): string {
     return `cipher-${account}`
+  }
+
+  /** Cancel the startup watchdog once the client reaches a known state. */
+  private settle(account: AccountId): void {
+    const t = this.startTimers.get(account)
+    if (t) {
+      clearTimeout(t)
+      this.startTimers.delete(account)
+    }
+  }
+
+  /**
+   * Remove stale Chrome profile lock files. If the app was killed while a
+   * session was starting, these locks remain and make the next launch hang
+   * forever with no QR. Safe to delete when no client is using the profile.
+   */
+  private clearProfileLocks(account: AccountId): void {
+    const dir = join(this.sessionDir, `session-${this.clientId(account)}`)
+    for (const name of ['SingletonLock', 'SingletonSocket', 'SingletonCookie']) {
+      try {
+        rmSync(join(dir, name), { force: true })
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   isActive(account: AccountId): boolean {
@@ -139,6 +170,7 @@ export class WhatsAppManager {
     })
 
     client.on('qr', async (qr: string) => {
+      this.settle(account) // a QR means the browser came up fine
       try {
         const dataUrl = await QRCode.toDataURL(qr, { margin: 1, width: 320 })
         this.emit.qr(account, dataUrl)
@@ -149,15 +181,18 @@ export class WhatsAppManager {
     })
 
     client.on('authenticated', () => {
+      this.settle(account)
       this.emit.status(account, 'connecting')
     })
 
     client.on('ready', () => {
+      this.settle(account)
       this.emit.status(account, 'active', 'Linked just now')
     })
 
     client.on('disconnected', (reason: string) => {
       console.warn(`[wa] ${account} disconnected:`, reason)
+      this.settle(account)
       this.emit.status(account, 'needs_relink', 'Session dropped — re-link to resume')
       // Drop the client; a re-link rebuilds it.
       void this.destroy(account)
@@ -165,6 +200,7 @@ export class WhatsAppManager {
 
     client.on('auth_failure', (msg: string) => {
       console.error(`[wa] ${account} auth failure:`, msg)
+      this.settle(account)
       this.emit.status(account, 'needs_relink', 'Authentication failed — re-link')
     })
 
@@ -174,13 +210,29 @@ export class WhatsAppManager {
   /** Start (or restart) a client and begin the link flow / auto-reconnect. */
   async start(account: AccountId): Promise<void> {
     if (this.clients.has(account)) return
+    this.clearProfileLocks(account)
     const client = this.build(account)
     this.clients.set(account, client)
     this.emit.status(account, 'connecting')
+
+    // Watchdog: if the browser never produces a QR or becomes ready, don't leave
+    // the UI spinning forever — tear down and report a clear, retryable error.
+    this.settle(account)
+    this.startTimers.set(
+      account,
+      setTimeout(() => {
+        if (!this.clients.has(account)) return
+        console.error(`[wa] ${account} timed out before QR/ready`)
+        void this.destroy(account)
+        this.emit.status(account, 'needs_relink', 'Timed out starting WhatsApp — please try again')
+      }, START_TIMEOUT)
+    )
+
     try {
       await client.initialize()
     } catch (err) {
       console.error(`[wa] ${account} initialize failed`, err)
+      this.settle(account)
       this.clients.delete(account)
       this.emit.status(account, 'needs_relink', 'Could not start session — try again')
       throw err
@@ -189,6 +241,7 @@ export class WhatsAppManager {
 
   /** Tear down a client without wiping saved credentials. */
   async destroy(account: AccountId): Promise<void> {
+    this.settle(account)
     const client = this.clients.get(account)
     this.clients.delete(account)
     if (!client) return

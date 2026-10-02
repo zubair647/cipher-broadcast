@@ -115,6 +115,25 @@ export function useApp(): AppCtx {
         if (status === 'connecting' && s.qr && s.qr.account === account && s.qr.dataUrl) {
           next = { ...next, qr: { ...s.qr, connecting: true } }
         }
+        // A link attempt that failed/timed out while the QR panel is open:
+        // close the panel and surface the reason instead of spinning forever.
+        if (
+          (status === 'needs_relink' || status === 'not_linked') &&
+          s.qr &&
+          s.qr.account === account
+        ) {
+          next = {
+            ...next,
+            qr: null,
+            banner: {
+              kind: 'error',
+              text:
+                (linkedWhen && linkedWhen.length > 0
+                  ? linkedWhen
+                  : 'Could not link WhatsApp') + '. Make sure your phone has internet and try again.'
+            }
+          }
+        }
         // When the account becomes active while its QR is open, close the QR panel.
         if (status === 'active' && s.qr && s.qr.account === account) {
           next = { ...next, qr: null }
