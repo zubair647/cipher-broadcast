@@ -1,0 +1,23 @@
+appId: com.cipherschools.broadcast
+productName: CipherSchools Broadcast
+directories:
+  buildResources: build
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!{.eslintrc,.prettierrc,tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+asarUnpack:
+  - resources/**
+mac:
+  category: public.app-category.productivity
+  target:
+    - dmg
+  icon: build/icon.png
+win:
+  target:
+    - nsis
+linux:
+  target:
+    - AppImage
+  category: Utility

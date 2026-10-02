@@ -1,0 +1,133 @@
+:root {
+  --orange: #ffa103;
+  --orange-deep: color-mix(in srgb, var(--orange) 86%, #000);
+  --orange-soft: color-mix(in srgb, var(--orange) 13%, #fff);
+  --orange-ink: color-mix(in srgb, var(--orange) 72%, #000);
+  --ink: #161513;
+  --bg: #fafaf8;
+  --surface: #ffffff;
+  --line: #edece8;
+  --line-strong: #dedcd6;
+  --muted: #918f8a;
+  --sub: #5e5c57;
+  --text2: #38362f;
+  --green: #20a968;
+  --green-soft: #e7f6ef;
+  --green-ink: #0f7a4b;
+  --green-border: #bbe6cf;
+  --amber: #e7a523;
+  --amber-soft: #fbf2da;
+  --amber-ink: #8a5e00;
+  --red: #e45757;
+  --red-soft: #fcecec;
+  --red-ink: #b02c2c;
+  --red-border: #f3c9c9;
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+a {
+  color: #8a5a00;
+  text-decoration: none;
+}
+a:hover {
+  color: #ffa103;
+}
+::selection {
+  background: rgba(255, 161, 3, 0.25);
+}
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+}
+textarea {
+  resize: none;
+}
+::placeholder {
+  color: #aeada8;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #e2e0db;
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+/* Focus ring: 2px orange on keyboard focus only (accessibility spec). */
+:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 2px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes sweep {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(420%);
+  }
+}
+@keyframes skel {
+  0% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0.5;
+  }
+}
