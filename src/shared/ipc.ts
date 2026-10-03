@@ -10,6 +10,7 @@ export const IPC = {
   renameGroup: 'registry:renameGroup',
   saveList: 'lists:save',
   deleteList: 'lists:delete',
+  setDefaultList: 'lists:setDefault',
   sendBroadcast: 'send:broadcast',
   pickFile: 'dialog:pickFile',
   openExternal: 'shell:openExternal',

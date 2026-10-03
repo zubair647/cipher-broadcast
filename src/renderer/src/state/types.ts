@@ -80,6 +80,8 @@ export interface AppActions {
   onEditorName(name: string): void
   toggleEditorGroup(gid: string): void
   saveEditor(): Promise<void>
+  deleteList(listId: string): Promise<void>
+  setDefaultList(listId: string): Promise<void>
 
   refreshGroups(): Promise<void>
   startRename(id: string): void

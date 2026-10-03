@@ -31,6 +31,8 @@ const api = {
     ipcRenderer.invoke(IPC.saveList, account, list),
   deleteList: (account: AccountId, listId: string): Promise<AccountData> =>
     ipcRenderer.invoke(IPC.deleteList, account, listId),
+  setDefaultList: (account: AccountId, listId: string): Promise<AccountData> =>
+    ipcRenderer.invoke(IPC.setDefaultList, account, listId),
 
   sendBroadcast: (req: SendRequest): Promise<Broadcast> =>
     ipcRenderer.invoke(IPC.sendBroadcast, req),

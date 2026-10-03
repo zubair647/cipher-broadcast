@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { useApp } from './state/useApp'
 import { Sidebar } from './components/Sidebar'
 import { MobileTopbar, MobileSlideover } from './components/MobileNav'
@@ -24,6 +24,11 @@ function Banner({
     kind === 'error'
       ? { bg: 'var(--red-soft)', border: 'var(--red-border)', ink: 'var(--red-ink)' }
       : { bg: 'var(--amber-soft)', border: 'var(--amber)', ink: 'var(--amber-ink)' }
+  // Auto-dismiss so a banner never lingers across screens.
+  useEffect(() => {
+    const t = setTimeout(onClose, 6000)
+    return () => clearTimeout(t)
+  }, [onClose])
   return (
     <div
       style={{

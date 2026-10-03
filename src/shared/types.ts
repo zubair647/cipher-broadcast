@@ -53,6 +53,7 @@ export interface AccountData {
   groups: Group[]
   lists: List[]
   history: Broadcast[]
+  defaultListId?: string // which list is pre-selected in the composer
 }
 
 export type AllData = Record<AccountId, AccountData>

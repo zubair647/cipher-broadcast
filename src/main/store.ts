@@ -11,14 +11,16 @@ import type { AccountData, AccountId, AllData } from '../shared/types'
 const uid = (p = 'x'): string => p + Math.random().toString(36).slice(2, 9)
 
 function emptyAccount(label: string): AccountData {
+  const allGroupsId = uid('l')
   return {
     label,
     status: 'not_linked',
     linkedWhen: 'Not linked yet',
     groups: [],
     // A default "All Groups" list is always maintained (PRD FR3).
-    lists: [{ id: uid('l'), name: 'All Groups', group_ids: [] }],
-    history: []
+    lists: [{ id: allGroupsId, name: 'All Groups', group_ids: [] }],
+    history: [],
+    defaultListId: allGroupsId
   }
 }
 
@@ -62,6 +64,12 @@ export class Store {
         // so the UI never boots into a stuck connecting state.
         if (merged[k].status === 'connecting') {
           merged[k].status = merged[k].groups.length ? 'needs_relink' : 'not_linked'
+        }
+        // Ensure the default list points at a real list.
+        const lists = merged[k].lists
+        if (!merged[k].defaultListId || !lists.some((l) => l.id === merged[k].defaultListId)) {
+          const allGroups = lists.find((l) => l.name === 'All Groups')
+          merged[k].defaultListId = (allGroups || lists[0])?.id
         }
       }
       return merged

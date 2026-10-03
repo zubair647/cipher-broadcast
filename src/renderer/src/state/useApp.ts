@@ -3,7 +3,9 @@ import type { AccountData, AccountId, AllData } from '../../../shared/types'
 import type { AppActions, AppCtx, AppState, Screen } from './types'
 
 function firstListId(data: AllData, acc: AccountId): string {
-  return data[acc].lists[0]?.id || ''
+  const a = data[acc]
+  const def = a.defaultListId && a.lists.find((l) => l.id === a.defaultListId)
+  return (def ? def.id : a.lists[0]?.id) || ''
 }
 
 const emptyData: AllData = {
@@ -101,6 +103,13 @@ export function useApp(): AppCtx {
     })
 
     const offStatus = window.api.onStatus(({ account, status, linkedWhen }) => {
+      // Snapshot BEFORE updating, to decide on side-effects without running them
+      // inside the (must-be-pure) state updater.
+      const prev = ref.current
+      const qrForThis = prev.qr && prev.qr.account === account ? prev.qr : null
+      const shouldSync =
+        status === 'active' && Boolean(qrForThis) && prev.data[account].groups.length === 0
+
       setState((s) => {
         const data = {
           ...s.data,
@@ -117,36 +126,32 @@ export function useApp(): AppCtx {
         }
         // A link attempt that failed/timed out while the QR panel is open:
         // close the panel and surface the reason instead of spinning forever.
-        if (
-          (status === 'needs_relink' || status === 'not_linked') &&
-          s.qr &&
-          s.qr.account === account
-        ) {
+        if ((status === 'needs_relink' || status === 'not_linked') && s.qr && s.qr.account === account) {
           next = {
             ...next,
             qr: null,
             banner: {
               kind: 'error',
               text:
-                (linkedWhen && linkedWhen.length > 0
-                  ? linkedWhen
-                  : 'Could not link WhatsApp') + '. Make sure your phone has internet and try again.'
+                (linkedWhen && linkedWhen.length > 0 ? linkedWhen : 'Could not link WhatsApp') +
+                '. Make sure your phone has internet and try again.'
             }
           }
         }
         // When the account becomes active while its QR is open, close the QR panel.
         if (status === 'active' && s.qr && s.qr.account === account) {
           next = { ...next, qr: null }
-          // One-time registry sync if this account has no groups yet (PRD setup flow).
-          if (s.data[account].groups.length === 0) {
-            window.api
-              .refreshGroups(account)
-              .then((ad) => setAccountData(account, ad))
-              .catch((err) => console.error('post-link sync failed', err))
-          }
         }
         return next
       })
+
+      // One-time registry sync after linking (side-effect kept OUT of the updater).
+      if (shouldSync) {
+        window.api
+          .refreshGroups(account)
+          .then((ad) => setAccountData(account, ad))
+          .catch((err) => console.error('post-link sync failed', err))
+      }
     })
 
     const offProgress = window.api.onSendProgress(({ account, current, total, listName, result }) => {
@@ -330,6 +335,34 @@ export function useApp(): AppCtx {
     patch({ editor: null })
   }, [patch, setAccountData])
 
+  const deleteList = useCallback(
+    async (listId: string) => {
+      const account = ref.current.account
+      const ad = await window.api.deleteList(account, listId)
+      setAccountData(account, ad)
+      // If the composer was pointing at the deleted list, move it to the default.
+      patch((s) => {
+        const stillThere = ad.lists.some((l) => l.id === s.composer.listId)
+        return {
+          editor: null,
+          composer: stillThere
+            ? s.composer
+            : { ...s.composer, listId: ad.defaultListId || ad.lists[0]?.id || '' }
+        }
+      })
+    },
+    [patch, setAccountData]
+  )
+
+  const setDefaultList = useCallback(
+    async (listId: string) => {
+      const account = ref.current.account
+      const ad = await window.api.setDefaultList(account, listId)
+      setAccountData(account, ad)
+    },
+    [setAccountData]
+  )
+
   const refreshGroups = useCallback(async () => {
     if (ref.current.syncing) return
     const account = ref.current.account
@@ -436,6 +469,8 @@ export function useApp(): AppCtx {
     onEditorName,
     toggleEditorGroup,
     saveEditor,
+    deleteList,
+    setDefaultList,
     refreshGroups,
     startRename,
     onRenameInput,

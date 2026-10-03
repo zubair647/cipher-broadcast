@@ -91,7 +91,9 @@ function registerIpc(): void {
   ipcMain.handle(IPC.getData, (): AllData => store.all())
 
   ipcMain.handle(IPC.linkAccount, async (_e, account: AccountId) => {
-    await wa.start(account)
+    // Always force a fresh session so Link / Re-link reliably produces a new QR,
+    // even if a stale client was already running (e.g. from auto-reconnect).
+    await wa.restart(account)
     return store.account(account)
   })
 
@@ -151,9 +153,22 @@ function registerIpc(): void {
   ipcMain.handle(IPC.deleteList, (_e, account: AccountId, listId: string) => {
     store.update(account, (a) => {
       const target = a.lists.find((l) => l.id === listId)
+      // "All Groups" is the maintained registry list and can't be deleted.
       if (target && target.name !== 'All Groups') {
         a.lists = a.lists.filter((l) => l.id !== listId)
+        // If the deleted list was the default, fall back to "All Groups".
+        if (a.defaultListId === listId) {
+          const allGroups = a.lists.find((l) => l.name === 'All Groups')
+          a.defaultListId = (allGroups || a.lists[0])?.id
+        }
       }
+    })
+    return store.account(account)
+  })
+
+  ipcMain.handle(IPC.setDefaultList, (_e, account: AccountId, listId: string) => {
+    store.update(account, (a) => {
+      if (a.lists.some((l) => l.id === listId)) a.defaultListId = listId
     })
     return store.account(account)
   })
@@ -230,8 +245,15 @@ function registerIpc(): void {
 function autoReconnect(): void {
   for (const account of ['business', 'personal'] as AccountId[]) {
     const a = store.account(account)
-    if (a.status === 'active' || a.status === 'needs_relink') {
+    // Only auto-reconnect accounts that actually have a saved session on disk.
+    if ((a.status === 'active' || a.status === 'needs_relink') && wa.hasSavedSession(account)) {
       wa.start(account).catch((err) => console.error(`[main] autoReconnect ${account}`, err))
+    } else if (a.status !== 'not_linked') {
+      // Status says linked but no session exists (e.g. cleared) — reflect reality.
+      store.update(account, (acc) => {
+        acc.status = 'not_linked'
+        acc.linkedWhen = 'Not linked yet'
+      })
     }
   }
 }

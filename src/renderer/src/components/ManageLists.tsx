@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import type { AppCtx } from '../state/types'
 import { Icon } from '../icons'
 
@@ -7,6 +7,12 @@ export function ManageLists({ app }: { app: AppCtx }): React.JSX.Element {
   const acc = state.data[state.account]
   const hasGroups = acc.groups.length > 0
   const editorOpen = state.editor !== null
+  const [groupQuery, setGroupQuery] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const q = groupQuery.trim().toLowerCase()
+  const visibleGroups = q
+    ? acc.groups.filter((g) => g.display_name.toLowerCase().includes(q))
+    : acc.groups
 
   const h1: React.CSSProperties = {
     fontSize: 'clamp(24px,3.4vw,30px)',
@@ -130,8 +136,58 @@ export function ManageLists({ app }: { app: AppCtx }): React.JSX.Element {
             </span>
           </div>
 
-          <div style={{ border: '1px solid var(--line)', borderRadius: 13, overflow: 'hidden' }}>
-            {acc.groups.map((g) => {
+          <div style={{ position: 'relative', marginBottom: 11 }}>
+            <Icon
+              name="search"
+              size={16}
+              sw={1.8}
+              color="var(--muted)"
+              style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)' }}
+            />
+            <input
+              value={groupQuery}
+              onChange={(e) => setGroupQuery(e.target.value)}
+              placeholder={`Search ${acc.groups.length} groups…`}
+              style={{
+                width: '100%',
+                padding: '10px 36px 10px 38px',
+                fontSize: 13.5,
+                color: 'var(--ink)',
+                background: 'var(--bg)',
+                border: '1px solid var(--line-strong)',
+                borderRadius: 10
+              }}
+            />
+            {groupQuery && (
+              <button
+                onClick={() => setGroupQuery('')}
+                aria-label="Clear search"
+                style={{
+                  position: 'absolute',
+                  right: 10,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  display: 'inline-flex',
+                  padding: 3,
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--sub)',
+                  cursor: 'pointer',
+                  borderRadius: 6
+                }}
+              >
+                <Icon name="x" size={14} sw={2} />
+              </button>
+            )}
+          </div>
+
+          <div style={{ border: '1px solid var(--line)', borderRadius: 13, overflow: 'hidden', maxHeight: 360, overflowY: 'auto' }}>
+            {visibleGroups.length === 0 && (
+              <div style={{ padding: '16px 15px', fontSize: 13, color: 'var(--muted)', textAlign: 'center' }}>
+                No groups match “{groupQuery}”.
+              </div>
+            )}
+            {visibleGroups.map((g) => {
               const checked = state.editor!.groupIds.includes(g.id)
               return (
                 <label
@@ -202,7 +258,8 @@ export function ManageLists({ app }: { app: AppCtx }): React.JSX.Element {
             const sample = names.length
               ? names.slice(0, 3).join(' · ') + (names.length > 3 ? ' +' + (names.length - 3) + ' more' : '')
               : 'No groups yet'
-            const isDefault = l.name === 'All Groups'
+            const isDefault = l.id === acc.defaultListId
+            const isAllGroups = l.name === 'All Groups'
             return (
               <div
                 key={l.id}
@@ -251,26 +308,117 @@ export function ManageLists({ app }: { app: AppCtx }): React.JSX.Element {
                   )}
                 </div>
                 <div style={{ fontSize: 12.5, color: 'var(--sub)', lineHeight: 1.55, minHeight: 34 }}>{sample}</div>
-                <button
-                  onClick={() => actions.editList(l.id)}
-                  style={{
-                    alignSelf: 'flex-start',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 7,
-                    padding: '8px 13px',
-                    border: '1px solid var(--line-strong)',
-                    background: 'var(--surface)',
-                    color: 'var(--text2)',
-                    borderRadius: 9,
-                    fontSize: 12.5,
-                    fontWeight: 500,
-                    cursor: 'pointer'
-                  }}
-                >
-                  <Icon name="pencil" size={14} sw={1.8} />
-                  Edit
-                </button>
+                {confirmDelete === l.id ? (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      background: 'var(--red-soft)',
+                      border: '1px solid var(--red-border)',
+                      borderRadius: 10,
+                      padding: '9px 11px'
+                    }}
+                  >
+                    <span style={{ flex: '1 1 auto', fontSize: 12.5, color: 'var(--red-ink)', fontWeight: 500 }}>
+                      Delete this list?
+                    </span>
+                    <button
+                      onClick={() => {
+                        setConfirmDelete(null)
+                        void actions.deleteList(l.id)
+                      }}
+                      style={{
+                        padding: '6px 11px',
+                        border: 'none',
+                        background: 'var(--red)',
+                        color: '#fff',
+                        borderRadius: 8,
+                        fontSize: 12.5,
+                        fontWeight: 600,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Delete
+                    </button>
+                    <button
+                      onClick={() => setConfirmDelete(null)}
+                      style={{
+                        padding: '6px 11px',
+                        border: '1px solid var(--line-strong)',
+                        background: 'var(--surface)',
+                        color: 'var(--sub)',
+                        borderRadius: 8,
+                        fontSize: 12.5,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <button
+                      onClick={() => actions.editList(l.id)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 7,
+                        padding: '8px 13px',
+                        border: '1px solid var(--line-strong)',
+                        background: 'var(--surface)',
+                        color: 'var(--text2)',
+                        borderRadius: 9,
+                        fontSize: 12.5,
+                        fontWeight: 500,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <Icon name="pencil" size={14} sw={1.8} />
+                      Edit
+                    </button>
+                    {!isDefault && (
+                      <button
+                        onClick={() => void actions.setDefaultList(l.id)}
+                        title="Make this the list pre-selected when sending"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          padding: '8px 12px',
+                          border: '1px solid var(--line-strong)',
+                          background: 'var(--surface)',
+                          color: 'var(--orange-ink)',
+                          borderRadius: 9,
+                          fontSize: 12.5,
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Set as default
+                      </button>
+                    )}
+                    {!isAllGroups && (
+                      <button
+                        onClick={() => setConfirmDelete(l.id)}
+                        aria-label="Delete list"
+                        title="Delete list"
+                        style={{
+                          marginLeft: 'auto',
+                          display: 'inline-flex',
+                          padding: 8,
+                          border: '1px solid var(--line-strong)',
+                          background: 'var(--surface)',
+                          color: 'var(--red-ink)',
+                          borderRadius: 9,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <Icon name="x" size={14} sw={2} />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )
           })}
